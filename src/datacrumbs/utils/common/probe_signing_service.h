@@ -21,15 +21,23 @@ std::string tcp_host();
 int tcp_port();
 
 /**
- * @brief Request a checksum signature for a serialized signing payload.
+ * @brief Request a signed probe document for a serialized signing payload.
+ *
+ * The request is authenticated with a munge credential bound to the payload, so
+ * the manager derives the requesting uid from munged rather than from anything
+ * this process claims. The manager injects identity and expiry fields into the
+ * summary before signing, which means the returned document differs from what
+ * was sent and must be persisted verbatim -- a locally rebuilt document would
+ * not match the signature.
+ *
  * @param signing_payload Serialized JSON payload sent to manager.
- *        Example: "{\"payload\":\"...\"}".
- * @param checksum Output checksum string on success.
+ *        Example: "{\"summary\":{...},\"categories\":[...]}".
+ * @param signed_document Output complete signed document on success.
  * @param error Optional output error message on failure.
- * @return True when signature request succeeds and checksum is set.
+ * @return True when the request succeeds and signed_document is set.
  */
-bool request_probe_signature(const std::string& signing_payload, std::string* checksum,
-                             std::string* error = nullptr);
+bool request_signed_probe_document(const std::string& signing_payload,
+                                   std::string* signed_document, std::string* error = nullptr);
 
 }  // namespace datacrumbs::probe_signing_service
 

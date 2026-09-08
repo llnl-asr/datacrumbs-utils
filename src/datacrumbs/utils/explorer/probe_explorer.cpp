@@ -1863,18 +1863,20 @@ std::vector<std::shared_ptr<Probe>> ProbeExplorer::writeProbesToJson() {
                          json_object_new_string(configManager_->probe_file_path.string().c_str()));
   json_object_object_add(summary, "hostname",
                          json_object_new_string(configManager_->hostname.c_str()));
-  json_object_object_add(summary, "user", json_object_new_string(configManager_->user.c_str()));
   json_object_object_add(summary, "install_user", json_object_new_string(DATACRUMBS_INSTALL_USER));
   json_object_object_add(root, "summary", summary);
   json_object_object_add(root, "categories", json_object_get(jarray));
 
+  // The requesting identity is deliberately absent here. The manager derives it
+  // from the munge credential on the request and injects it into the summary
+  // before signing, so it cannot be chosen by this process.
   const std::string signing_payload = probe_signing_payload(summary, jarray);
-  std::string checksum;
+  std::string signed_document;
   std::string signing_error;
   DC_LOG_INFO("Requesting probe signature for %s",
               configManager_->probe_file_path.string().c_str());
-  const bool signed_ok = datacrumbs::probe_signing_service::request_probe_signature(
-      signing_payload, &checksum, &signing_error);
+  const bool signed_ok = datacrumbs::probe_signing_service::request_signed_probe_document(
+      signing_payload, &signed_document, &signing_error);
   if (!signed_ok) {
     DC_LOG_ERROR("Failed to sign probes through datacrumbs_probe_manager service: %s",
                  signing_error.c_str());
@@ -1883,13 +1885,13 @@ std::vector<std::shared_ptr<Probe>> ProbeExplorer::writeProbesToJson() {
     return probes;
   }
 
-  json_object_object_add(root, "checksum_algorithm", json_object_new_string("hmac-sha256"));
-  json_object_object_add(root, "checksum", json_object_new_string(checksum.c_str()));
   DC_LOG_INFO("Probe file signed successfully: %s",
               configManager_->probe_file_path.string().c_str());
 
-  const char* signed_json = json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY);
-  const std::string signed_payload = signed_json != nullptr ? signed_json : "";
+  // Persist exactly what the manager signed. Rebuilding the document locally
+  // would drop the injected identity and expiry fields and invalidate the
+  // signature.
+  const std::string signed_payload = signed_document;
 
   if (!datacrumbs::probe_file::write_gzip_file(configManager_->probe_file_path, signed_payload)) {
     DC_LOG_ERROR("Failed to open file: %s", configManager_->probe_file_path.c_str());
@@ -1919,7 +1921,9 @@ bool ProbeExplorer::writeSystemProbeJson() {
       json_object_new_string(configManager_->system_probe_path.string().c_str()));
   json_object_object_add(summary, "hostname",
                          json_object_new_string(configManager_->hostname.c_str()));
-  json_object_object_add(summary, "user", json_object_new_string(configManager_->user.c_str()));
+  // Descriptive only: this document is not signed and is not an authorization
+  // input. Use the real invoking uid rather than a configurable name.
+  json_object_object_add(summary, "uid", json_object_new_int64(static_cast<int64_t>(getuid())));
   json_object_object_add(summary, "install_user", json_object_new_string(DATACRUMBS_INSTALL_USER));
   json_object_object_add(root, "summary", summary);
 

@@ -3,7 +3,9 @@
 
 #include <arpa/inet.h>
 #include <datacrumbs/datacrumbs_utils_config.h>
+#include <datacrumbs/common/probe_file.h>
 #include <datacrumbs/utils/common/probe_signing_service.h>
+#include <munge.h>
 #include <json-c/json.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -11,6 +13,7 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 
@@ -110,7 +113,7 @@ bool read_response_payload(const std::string& response_payload, std::string* sig
   }
 
   if (signed_payload != nullptr) {
-    *signed_payload = json_string_or_empty(result_obj, "checksum");
+    *signed_payload = json_string_or_empty(result_obj, "document");
   }
   json_object_put(root);
   return signed_payload != nullptr && !signed_payload->empty();
@@ -126,8 +129,32 @@ int tcp_port() {
   return DATACRUMBS_PROBE_MANAGER_TCP_PORT;
 }
 
-bool request_probe_signature(const std::string& signing_payload, std::string* checksum,
-                             std::string* error) {
+bool request_signed_probe_document(const std::string& signing_payload,
+                                   std::string* signed_document, std::string* error) {
+  // Bind the credential to this exact payload so a credential captured inside its
+  // TTL cannot be replayed against different probe content.
+  const std::string payload_digest = datacrumbs::probe_file::sha256_hex(signing_payload);
+  if (payload_digest.empty()) {
+    if (error != nullptr) {
+      *error = "failed to digest signing payload";
+    }
+    return false;
+  }
+
+  char* credential = nullptr;
+  const munge_err_t munge_rc = munge_encode(&credential, nullptr, payload_digest.data(),
+                                            static_cast<int>(payload_digest.size()));
+  if (munge_rc != EMUNGE_SUCCESS) {
+    if (error != nullptr) {
+      *error = std::string("failed to create munge credential (is munged running?): ") +
+               munge_strerror(munge_rc);
+    }
+    free(credential);
+    return false;
+  }
+  const std::string credential_text = credential != nullptr ? credential : "";
+  free(credential);
+
   // Resolve manager endpoint from runtime configuration.
   const std::string host = tcp_host();
   const int port = tcp_port();
@@ -174,6 +201,8 @@ bool request_probe_signature(const std::string& signing_payload, std::string* ch
   json_object_object_add(request_root, "jsonrpc", json_object_new_string(kRpcVersion));
   json_object_object_add(request_root, "id", json_object_new_string("1"));
   json_object_object_add(request_root, "method", json_object_new_string(kSignMethod));
+  json_object_object_add(request_root, "credential",
+                         json_object_new_string(credential_text.c_str()));
   json_object_object_add(request_root, "params", params);
   const char* request_json = json_object_to_json_string_ext(request_root, JSON_C_TO_STRING_PLAIN);
   const std::string request_payload = request_json != nullptr ? request_json : "";
@@ -204,7 +233,7 @@ bool request_probe_signature(const std::string& signing_payload, std::string* ch
     }
     return false;
   }
-  return read_response_payload(response_payload, checksum, error);
+  return read_response_payload(response_payload, signed_document, error);
 }
 
 }  // namespace datacrumbs::probe_signing_service

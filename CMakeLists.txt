@@ -374,9 +374,10 @@ set(DATACRUMBS_UTILS_PROBE_CONFIGURATOR_SRC
     "${CMAKE_CURRENT_SOURCE_DIR}/src/datacrumbs/utils/explorer/mechanism/ksym_capture.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/datacrumbs/utils/explorer/mechanism/usdt_functions.h"
 )
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/find_munge.cmake)
 add_executable(datacrumbs_probe_configurator ${DATACRUMBS_UTILS_PROBE_CONFIGURATOR_SRC} ${DATACRUMBS_UTILS_COMMON_SRC})
 set_target_properties(datacrumbs_probe_configurator PROPERTIES OUTPUT_NAME datacrumbs_probe_configurator_exec)
-target_link_libraries(datacrumbs_probe_configurator ${DATACRUMBS_PUBLIC_COMMON_LIBRARY} ${DEPENDENCY_LIB} yaml-cpp OpenSSL::Crypto)
+target_link_libraries(datacrumbs_probe_configurator ${DATACRUMBS_PUBLIC_COMMON_LIBRARY} ${DEPENDENCY_LIB} yaml-cpp OpenSSL::Crypto Munge::Munge)
 add_dependencies(datacrumbs_probe_configurator datacrumbs_client clean_all)
 install(TARGETS datacrumbs_probe_configurator RUNTIME DESTINATION "${DATACRUMBS_INSTALL_BINARYDIR}")
 

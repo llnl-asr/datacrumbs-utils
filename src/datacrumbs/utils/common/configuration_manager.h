@@ -59,6 +59,11 @@ class ConfigurationManager {
 
   // User associated with the configuration
   std::string user;
+  /// Declarations of which probed calls yield a new PID, keyed by a regular
+  /// expression over the function name with a source name such as "return".
+  /// Patterns are expanded against each probe's resolved functions when the
+  /// signing payload is built, so only concrete names leave this process.
+  std::unordered_map<std::string, std::string> new_pid_functions;
 
   std::string inclusion_path;   // Path to the inclusion file
   std::string inclusion_paths;  // Colon-separated runtime inclusion paths

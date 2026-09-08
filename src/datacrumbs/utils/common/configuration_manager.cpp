@@ -125,6 +125,7 @@ bool datacrumbs::Singleton<datacrumbs::ConfigurationManager>::stop_creating_inst
 #define DC_YAML_CAPTURE_PROBES "capture_probes"
 #define DC_YAML_USER "user"
 #define DC_YAML_INCLUSION_PATH "inclusion_path"
+#define DC_YAML_NEW_PID_FUNCTIONS "new_pid_functions"
 
 ArgumentParser::ArgumentParser(int argc, char** argv) {
   DC_LOG_TRACE("[ArgumentParser] Parsing command line arguments...");
@@ -401,6 +402,20 @@ ConfigurationManager::ConfigurationManager(int argc, char** argv, bool load_capt
           this->user.c_str());
     }
     // Parse inclusion path from YAML
+    // Patterns matching functions whose completion makes a new PID observable, so
+    // the runtime can follow tracing into processes the workload creates. One
+    // pattern covers the spellings a call has across mechanisms. Declared here
+    // rather than compiled in, then validated by the probe manager before signing.
+    if (config[DC_YAML_NEW_PID_FUNCTIONS]) {
+      for (const auto& entry : config[DC_YAML_NEW_PID_FUNCTIONS]) {
+        const auto pattern = entry.first.as<std::string>();
+        const auto source = entry.second.as<std::string>();
+        this->new_pid_functions[pattern] = source;
+        DC_LOG_DEBUG("[ConfigurationManager] Pattern '%s' declared to yield a new pid via '%s'",
+                     pattern.c_str(), source.c_str());
+      }
+    }
+
     if (config[DC_YAML_INCLUSION_PATH]) {
       this->inclusion_path = config[DC_YAML_INCLUSION_PATH].as<std::string>();
       this->inclusion_paths = this->inclusion_path;

@@ -1825,8 +1825,38 @@ std::vector<std::shared_ptr<Probe>> ProbeExplorer::writeProbesToJson() {
   }
   json_object* jarray = json_object_new_array();
 
+  // Compile the configured new-pid patterns once rather than per probe. Each key
+  // is a regular expression so that a single rule covers the spellings the same
+  // call has across mechanisms -- "clone", "kernel_clone" and "__x64_sys_clone"
+  // are all the same syscall, and enumerating every one by hand is easy to get
+  // half right, which fails silently.
+  std::vector<std::pair<std::regex, std::string>> new_pid_patterns;
+  for (const auto& [pattern, source] : configManager_->new_pid_functions) {
+    try {
+      new_pid_patterns.emplace_back(std::regex(pattern), source);
+    } catch (const std::regex_error& error) {
+      DC_LOG_ERROR("Invalid new_pid_functions pattern '%s': %s; ignoring it", pattern.c_str(),
+                   error.what());
+    }
+  }
+
   // Serialize each probe to JSON
   for (const auto& probe : probes) {
+    // Expand the patterns against the functions this probe actually attaches.
+    // Only concrete resolved names are written into the payload, never patterns,
+    // so the probe manager can still check every entry against the category's own
+    // function list and the runtime never has to interpret a regular expression.
+    for (const auto& function_name : probe->functions) {
+      for (const auto& [pattern, source] : new_pid_patterns) {
+        if (std::regex_search(function_name, pattern)) {
+          probe->new_pid_functions[function_name] = source;
+          DC_LOG_DEBUG("Function '%s' matched a new-pid pattern; source '%s'",
+                       function_name.c_str(), source.c_str());
+          break;  // first matching pattern wins
+        }
+      }
+    }
+
     json_object* jprobe = nullptr;
     switch (probe->type) {
       case ProbeType::SYSCALLS:

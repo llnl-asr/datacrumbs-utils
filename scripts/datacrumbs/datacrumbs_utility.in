@@ -275,10 +275,18 @@ EOF
 
 run_parallel_node_action() {
 	local action="$1"
-	local run_id="$2"
-	local probe_file="$3"
-	shift 3
+	# Both callers (datacrumbs_run, datacrumbs_stop) pass their --ssh-user value
+	# here. Accept it explicitly: without this parameter the argument list is
+	# shifted by one, so the run id silently becomes the user name and the probe
+	# file is treated as the first hostname. Remote access goes through
+	# build_ssh_target, which connects as the invoking user, so the value itself
+	# is currently unused.
+	local ssh_user="$2"
+	local run_id="$3"
+	local probe_file="$4"
+	shift 4
 	local -a nodes=("$@")
+	: "${ssh_user}"
 	local -a pids=()
 	local -a node_names=()
 	local failed=0
